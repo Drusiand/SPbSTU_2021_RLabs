@@ -1,0 +1,154 @@
+---
+title: "Лабораторная работа 3"
+output: html_notebook
+---
+# Задание 9
+Источник данных - reforest.xlsx
+Удалите строки, в которых есть пропущенные значения и приведите данные к формату tidydata. Отобразите динамику лесовосстановления по годам с помощью линейного графика для любого из федеральных округов, обозначив субъекты федерации разными цветами. Подпишите значения на графике. Отрегулируйте местоположение подписей так, чтобы рисунок был максимально наглядным. Придумайте новые назания графика и осей.
+
+Загружаем нужные данные:
+```{r}
+library("readxl")
+f <- file.choose()  # reforest.xlsx
+data <- read_excel(f)
+```
+Удаляем ненужные строки, содержащие пустые\некорректные значения (NA):
+```{r, warning = FALSE}
+for (i in 2:length(names(data))) {
+  data[[i]] <- as.numeric(data[[i]])
+}
+data_complete_cases <- data[complete.cases(data),]
+```
+Данные приводим к виду tidydata, после чего выбирается интересуюющий регион (в данном случае - Северо-Западный федеральный округ):
+```{r, message = FALSE}
+library("tidyr")
+library("dplyr")
+new_data <- data_complete_cases %>%
+  pivot_longer(cols = !Region, names_to = "Year", values_to = "Reforest_value") %>%
+  slice(161:208)
+```
+Наконец, отрисоваваем искомая информация:
+```{r}
+library(ggplot2)
+ggplot(new_data, aes(Year, Reforest_value, color = Region)) +
+  geom_line(aes(group = Region), size=2) +
+  geom_point(aes(group = Region), size=3) +
+  geom_text(aes(label = Reforest_value, vjust = -1,)) +
+  # theme(legend.position=c(0.1, 0.85)) +
+  xlab("Год") +
+  ylab("Восстановленный лес, га")
+```
+
+# Задание 14
+Файлы data2.csv, data1.txt.
+Объедините data.frames по идентификаторам сортов. Исключите те сорта, для которых есть пропущенные значения. Для всех наблюдаемых величин из файла test_data1.txt (из первого дз), в которых содержится не более 80% пропущенных значений нарисовать гистограммы. Найтите корреляции Пирсона для количественных переменных. Постройте тепловую карту (heatmap).
+
+Загружаем необходимые данные:
+```{r}
+f <- file.choose()  # data1.txt
+data_1 <- read.table(f, header = TRUE, sep = " ")
+data_1 <- data.frame(t(data_1))
+f <- file.choose()  # data2.csv
+data_2 <- read.csv(f)
+```
+После чего загружженую информацию объединяем в единый датафрейм по идентификатору сорта:
+```{r}
+tmp_names <- data_2$X
+data_2[[1]] <- NULL
+rownames(data_2) <- tmp_names
+
+total_data <- t(rbind(data_1, data_2))
+total_data <- data.frame(total_data[complete.cases(total_data), ])
+```
+Немного отвлёчемся. Обратимся к данным из 1-ого задания и немного преобразуем рассмариваемый датафрейм:
+```{r, warning = FALSE}
+f <- file.choose()  # test_data_01.csv
+data <- read.csv(f)
+fix_column <- function(column) {
+    res <- as.numeric(column)
+    return(res)
+  }
+data <- data.frame(apply(data, 1:2, fix_column))
+
+```
+Нам интересно рассмотреть и построить гистограммы для столбцов, в которых находятся не менее 80% пропущенных\некорректных наблюдений:
+```{r}
+na_df <- apply(data, 2, function(x) length(which(is.na(x))))
+data_len <- dim(data)[1]
+
+for (name in names(na_df))
+  if (na_df[[name]] / data_len  > 0.8)
+    data[[name]] <- NULL
+```
+Преобразуем этот датафрейм к виду tidydata...
+```{r}
+tidy_data<- data %>% pivot_longer(names(data), names_to = "Type", values_to = "Value")
+tidy_data <- tidy_data[complete.cases(tidy_data), ]
+```
+
+...и построим гистограммы:
+```{r}
+ggplot(tidy_data, aes(Value)) +
+    geom_histogram(binwidth=1) +
+    facet_wrap(~Type) +
+    xlab("Вид наблюдения") +
+    ylab("Частота")
+```
+
+Вернемся к изначальной total_data и наёдем матрицу корелляции, состоящую из коэффииентов корреляции Пирсона, после чего изобразим её в виде тепловой карты:
+```{r}
+my_colors <- colorRampPalette(c("cyan", "deeppink3"))
+cor_matrix <- cor(total_data)
+heatmap(cor_matrix)
+```
+
+# Доп задание shniy
+В качестве упражнения с shiny был выбран визулизатор таблицы total_data из предыдущего задания с возможностью решулирования количества отображаемых столбцов и строк
+
+
+Предзагрузка данных:
+```{r}
+f <- file.choose()  # "data/data1.txt"
+data_1 <- read.table(f, header = TRUE, sep = " ")
+data_1 <- data.frame(t(data_1))
+
+f <- file.choose() # "data/data2.csv"
+data_2 <- read.csv(f)
+tmp_names <- data_2$X
+data_2[[1]] <- NULL
+rownames(data_2) <- tmp_names
+
+total_data <- data.frame(t(rbind(data_1, data_2)))
+```
+Интерефейс:
+```{r}
+library(shiny)
+
+ui <- fluidPage(
+  titlePanel("Merged data visualization"),
+  sidebarLayout(
+    sidebarPanel(
+        checkboxGroupInput("show_vars", "Columns in \"total_data\" table to show:",
+                           names(total_data), selected = names(total_data))
+    ),
+    mainPanel(
+      tabsetPanel(
+        id = 'dataset',
+        tabPanel("Data from task 14", DT::dataTableOutput("mytable1")),
+      )
+    )
+  )
+)
+```
+
+Сервер:
+```{r}
+server <- function(input, output) {
+  output$mytable1 <- DT::renderDataTable({
+    DT::datatable(total_data[, input$show_vars, drop = FALSE])
+  })
+}
+```
+
+Запуск приложения в rmd невозможен, поэтому рекомендуется запуск непосредственно с помощью IDE (будь то RStudio или PyCharm с соответствующим расширением для работы с R). Исходный файл "Shiny.r" находится в каталоге source.
+

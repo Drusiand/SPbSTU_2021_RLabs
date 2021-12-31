@@ -1,5 +1,5 @@
-source("lab_1/source/task_1.R")
-source("lab_1/source/task_2.R")
+# source("lab_1/source/task_1.R")
+# source("lab_1/source/task_2.R")
 
 data <- read.csv("lab_1/data/test_data_01.csv")
 print("fix_data output example")
